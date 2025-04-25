@@ -1,1 +1,1 @@
-worker:angel.py
+worker: python3 angel.py
