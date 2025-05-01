@@ -70,12 +70,12 @@ async def set_caption_replacement(event, new_word, replacement_word):
     )
     await event.reply(f"✅ Set replacement for `{new_word}` to `{replacement_word}`.")
 
-async def get_caption_replacements():
+def get_caption_replacements():
     """ Fetch all word replacements from the database """
     replacement_data = settings_col.find_one({"key": "caption_replacements"})
     return replacement_data["value"] if replacement_data else []
 
-def apply_caption_replacements(caption_text):
+async def apply_caption_replacements(caption_text):
     """ Apply all replacements to the given caption text """
     replacements = await get_caption_replacements()
     for repl in replacements:
@@ -85,7 +85,7 @@ def apply_caption_replacements(caption_text):
     return caption_text
 
 # ================= Event Handlers =================
-def setup_extra_handlers(woodcraft):
+async def setup_extra_handlers(woodcraft):
     @woodcraft.on(events.NewMessage(pattern=r'^/setdelay (\d+)$'))
     async def set_delay(event):
         if not is_admin(event.sender_id):
