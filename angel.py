@@ -87,7 +87,7 @@ async def new_message_handler(event):
         return
 
     source_channels = await get_all_source_channels()
-    if event.chat_id not in source_channels:
+    if event.is_channel and event.chat.id not in source_channels:
         return
 
     await asyncio.sleep(woodcraft.delay_seconds)
