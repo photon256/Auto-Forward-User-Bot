@@ -16,6 +16,9 @@ NOOR_URL = os.getenv("NOOR_URL")
 DEFAULT_ADMINS = [int(x) for x in os.getenv("DEFAULT_ADMINS", "").split(",") if x.strip()]
 
 # ================== Functions ====================
+async def get_source_chat_ids():
+    ids = os.getenv("SOURCE_CHAT_IDS", "")
+    return [int(x.strip()) for x in ids.split(",") if x.strip()]
 async def add_target_channel(chat_id):
     if not extra_targets_col.find_one({"chat_id": chat_id}):
         extra_targets_col.insert_one({"chat_id": chat_id})
