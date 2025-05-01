@@ -6,6 +6,10 @@ import os
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = "angel_forward_bot"
 
+client = MongoClient(os.getenv("MONGODB_URI"))
+db = client.get_default_database()
+
+settings_col = db["settings"]
 client = AsyncIOMotorClient(MONGO_URI)
 db = client[DB_NAME]
 
