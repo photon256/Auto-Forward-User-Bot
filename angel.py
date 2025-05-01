@@ -1,34 +1,47 @@
 import os
-from dotenv import load_dotenv
+import re
 import asyncio
 import threading
 from flask import Flask
+from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError
-from settings import setup_extra_handlers, load_initial_settings, is_admin, DEFAULT_ADMINS
-from settings import get_all_target_channels, add_target_channel, remove_target_channel
-from angel_db import is_forwarded_for_target, mark_as_forwarded_for_target
-from angel_db import collection
+from settings import (
+    setup_extra_handlers, load_initial_settings, is_admin,
+    get_all_target_channels, add_target_channel, remove_target_channel, DEFAULT_ADMINS
+)
+from angel_db import is_forwarded_for_target, mark_as_forwarded_for_target, collection
+from angel_db import db  # Add this line to access MongoDB directly
 
 load_dotenv()
-# ===== WOODcraft ==== SudoR2spr ==== #
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
 STATUS_URL = os.getenv("STATUS_URL")
 SOURCE_CHAT_ID = int(os.getenv("SOURCE_CHAT_ID"))
 PORT = int(os.getenv("PORT", 8080))
-# ===== WOODcraft ==== SudoR2spr ==== #
 
-# ===== WOODcraft ==== SudoR2spr ==== #
 woodcraft = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 woodcraft.delay_seconds = 5
 woodcraft.skip_next_message = False
 app = Flask(__name__)
 forwarding_enabled = True
 
-# ===== WOODcraft ==== SudoR2spr ==== #
+# MongoDB collection for replacements
+replace_collection = db["replacements"]
+
+def apply_replacements(text):
+    if not text:
+        return text
+    all_rules = list(replace_collection.find({}))
+    for rule in all_rules:
+        try:
+            text = re.sub(rule["pattern"], rule["replacement"], text)
+        except Exception as e:
+            print(f"Regex error: {e}")
+    return text
+
 async def send_without_tag(original_msg):
     try:
         targets = await get_all_target_channels()
@@ -43,24 +56,23 @@ async def send_without_tag(original_msg):
                 continue
 
             print(f"➡️ Forwarding: {original_msg.id} to {target}")
-            
-            # ===== WOODcraft ==== SudoR2spr ==== মিডিয়া মেসেজ হ্যান্ডলিং === # 
+            caption = apply_replacements(original_msg.text)
+
             if original_msg.media:
                 await woodcraft.send_file(
                     entity=target,
                     file=original_msg.media,
-                    caption=original_msg.text,
+                    caption=caption,
                     silent=True
                 )
-            # ===== WOODcraft ==== SudoR2spr ==== টেক্সট মেসেজ হ্যান্ডলিং === #
             else:
                 await woodcraft.send_message(
                     entity=target,
-                    message=original_msg.text,
+                    message=caption,
                     formatting_entities=original_msg.entities,
                     silent=True
                 )
-            
+
             await mark_as_forwarded_for_target(original_msg.id, target)
             forwarded = True
             await asyncio.sleep(woodcraft.delay_seconds)
@@ -87,19 +99,18 @@ async def forward_old_messages_to_new_target(new_target_id):
         if await is_forwarded_for_target(message.id, new_target_id):
             continue
         try:
-            # ===== WOODcraft ==== SudoR2spr ==== মিডিয়া মেসেজ === #
+            caption = apply_replacements(message.text)
             if message.media:
                 await woodcraft.send_file(
                     new_target_id,
                     file=message.media,
-                    caption=message.text,
+                    caption=caption,
                     silent=True
                 )
-            # ===== WOODcraft ==== SudoR2spr ==== টেক্সট মেসেজ === #
             else:
                 await woodcraft.send_message(
                     new_target_id,
-                    message.text,
+                    caption,
                     formatting_entities=message.entities,
                     silent=True
                 )
@@ -113,6 +124,42 @@ async def forward_old_messages_to_new_target(new_target_id):
             print(f"🚨 Error: {str(e)}")
             break
 
+# ========= Replacement Management ========= #
+@woodcraft.on(events.NewMessage(pattern=r"^/setreplace\s+(.+?)\s*=>\s*(.+)$"))
+async def set_replace_handler(event):
+    if not is_admin(event.sender_id):
+        return
+    pattern, replacement = event.pattern_match.group(1).strip(), event.pattern_match.group(2).strip()
+    replace_collection.update_one(
+        {"pattern": pattern},
+        {"$set": {"replacement": replacement}},
+        upsert=True
+    )
+    await event.reply(f"✅ Regex Replacement Added:\n`{pattern}` => `{replacement}`")
+
+@woodcraft.on(events.NewMessage(pattern=r"^/delreplace\s+(.+)$"))
+async def del_replace_handler(event):
+    if not is_admin(event.sender_id):
+        return
+    pattern = event.pattern_match.group(1).strip()
+    result = replace_collection.delete_one({"pattern": pattern})
+    if result.deleted_count:
+        await event.reply(f"🗑️ Deleted replacement for pattern `{pattern}`")
+    else:
+        await event.reply(f"⚠️ No such replacement pattern found: `{pattern}`")
+
+@woodcraft.on(events.NewMessage(pattern=r"^/replacelist$"))
+async def list_replace_handler(event):
+    if not is_admin(event.sender_id):
+        return
+    rules = list(replace_collection.find({}))
+    if not rules:
+        await event.reply("⚠️ No replacement rules found.")
+    else:
+        msg = "**🔁 Replacement Rules:**\n" + "\n".join(f"`{r['pattern']}` => `{r['replacement']}`" for r in rules)
+        await event.reply(msg)
+
+# ========= Bot Control & Utility ========= #
 @woodcraft.on(events.NewMessage(pattern=r'^/status$'))
 async def status(event):
     if not is_admin(event.sender_id):
@@ -200,14 +247,15 @@ async def main():
     print("✅ Successfully Launch the bot!")
     await load_initial_settings(woodcraft)
     setup_extra_handlers(woodcraft)
-    
+
     targets = await get_all_target_channels()
     if not targets:
         print("⚠️ /addtarget Use")
-    
+
     asyncio.create_task(forward_old_messages())
     await woodcraft.run_until_disconnected()
 
 if __name__ == "__main__":
     threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": PORT}).start()
     asyncio.run(main())
+    
