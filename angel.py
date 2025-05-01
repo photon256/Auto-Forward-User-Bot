@@ -8,7 +8,7 @@ from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError
 from settings import (
     setup_extra_handlers, load_initial_settings, is_admin,
-    DEFAULT_ADMINS, get_all_target_channels,
+    DEFAULT_ADMINS, get_all_target_channels, get_all_source_channels(), 
     add_target_channel, remove_target_channel
 )
 from angel_db import (
