@@ -1,6 +1,7 @@
 aiohttp
 pymongo
 telethon
+motor
 flask
 requests
 flask-cors
