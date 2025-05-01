@@ -14,12 +14,13 @@ collection = db["forwarded_files"]
 settings_col = db["settings"]
 admin_col = db["admins"]
 extra_targets_col = db["extra_targets"]
-replacements_col = db["replacements"]  # New collection for replacements
+replacements_col = db["replacements"]
+source_channels_col = db["source_channels"]
 
 # Index setup
 collection.create_index([("message_id", 1), ("target_id", 1)], unique=True)
 
-# Forward tracking
+# Forwarding tracking
 async def is_forwarded_for_target(msg_id, target_id):
     return collection.find_one({"message_id": msg_id, "target_id": target_id}) is not None
 
@@ -29,7 +30,7 @@ async def mark_as_forwarded_for_target(msg_id, target_id):
     except DuplicateKeyError:
         pass
 
-# Replacement handling
+# Regex Replacements
 async def add_replacement(pattern: str, replacement: str):
     replacements_col.update_one(
         {"pattern": pattern},
@@ -52,4 +53,13 @@ async def apply_replacements(text: str) -> str:
         except re.error as e:
             print(f"Invalid regex pattern: {rule['pattern']} ({e})")
     return text
-    
+
+# Source channels
+async def get_all_source_channels():
+    return [doc["chat_id"] for doc in source_channels_col.find()]
+
+async def add_source_channel(chat_id: int):
+    source_channels_col.update_one({"chat_id": chat_id}, {"$set": {"chat_id": chat_id}}, upsert=True)
+
+async def remove_source_channel(chat_id: int):
+    source_channels_col.delete_one({"chat_id": chat_id})
