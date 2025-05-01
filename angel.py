@@ -10,7 +10,7 @@ from telethon.errors import FloodWaitError
 from settings import (
     setup_extra_handlers, load_initial_settings, is_admin,
     get_all_target_channels, add_target_channel, remove_target_channel,
-    get_all_source_channels, add_source_channel, remove_source_channel
+    get_source_chat_ids, add_source_channel, remove_source_channel
 )
 from angel_db import (
     is_forwarded_for_target, mark_as_forwarded_for_target,
