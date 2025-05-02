@@ -4,7 +4,7 @@ from pymongo import MongoClient
 import os
 
 # MongoDB config
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://abcd:abcdeas@cluster0.flillxf.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 DB_NAME = "angel_forward_bot"
 
 client = MongoClient(os.getenv("MONGODB_URI"))
