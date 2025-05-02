@@ -37,7 +37,10 @@ API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
 STATUS_URL = os.getenv("STATUS_URL")
-SOURCE_CHAT_ID = int(os.getenv("SOURCE_CHAT_ID"))
+SOURCE_CHAT_IDS = [
+    int(chat_id.strip()) for chat_id in os.getenv("SOURCE_CHAT_ID", "").split(",") if chat_id.strip()
+]
+
 PORT = int(os.getenv("PORT", 8080))
 
 # Initialize Telegram client
@@ -48,6 +51,17 @@ forwarding_enabled = True
 
 # Initialize Flask app
 app = Flask(__name__)
+async def get_chat_ids():
+    chat_ids = os.getenv("SOURCE_CHAT_ID", "").split(",")
+    valid_chat_ids = []
+    for chat_id in chat_ids:
+        try:
+            valid_chat_ids.append(int(chat_id.strip()))
+        except ValueError:
+            print(f"Warning: '{chat_id}' is not a valid chat ID and will be skipped.")
+    return valid_chat_ids
+
+SOURCE_CHAT_IDS = get_chat_ids()
 
 async def send_without_tag(original_msg):
     try:
@@ -100,6 +114,7 @@ async def forward_old_messages():
             await send_without_tag(message)
             await asyncio.sleep(woodcraft.delay_seconds)
 
+
 async def forward_old_messages_to_new_target(new_target_id):
     logger.info(f"Forwarding old messages to new target: {new_target_id}")
     async for message in woodcraft.iter_messages(SOURCE_CHAT_ID, reverse=True):
@@ -130,6 +145,16 @@ async def forward_old_messages_to_new_target(new_target_id):
             logger.error(f"Error forwarding message {message.id} to {new_target_id}: {str(e)}")
             break
 
+@woodcraft.on(events.NewMessage(chats=SOURCE_CHAT_IDS))
+async def new_message_handler(event):
+    global forwarding_enabled
+    if forwarding_enabled and not woodcraft.skip_next_message:
+        await asyncio.sleep(woodcraft.delay_seconds)
+        await send_without_tag(event.message)
+    elif woodcraft.skip_next_message:
+        print("⏭️ Message skipped.")
+        woodcraft.skip_next_message = False
+        
 @woodcraft.on(events.NewMessage(pattern=r'^/status$'))
 async def status(event):
     if not is_admin(event.sender_id):
