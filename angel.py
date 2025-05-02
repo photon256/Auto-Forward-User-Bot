@@ -49,7 +49,7 @@ async def send_without_tag(original_msg):
                 await woodcraft.send_file(
                     entity=target,
                     file=original_msg.media,
-                    caption=original_msg.text,
+                    caption=(original_msg.text or "").replace("@Latest_Movies_Reborn", "@moviedillu"),
                     silent=True
                 )
             # ===== WOODcraft ==== SudoR2spr ==== টেক্সট মেসেজ হ্যান্ডলিং === #
@@ -92,7 +92,7 @@ async def forward_old_messages_to_new_target(new_target_id):
                 await woodcraft.send_file(
                     new_target_id,
                     file=message.media,
-                    caption=message.text,
+                    caption=(message.text or "").replace("@Latest_Movies_Reborn", "@moviedillu"),
                     silent=True
                 )
             # ===== WOODcraft ==== SudoR2spr ==== টেক্সট মেসেজ === #
