@@ -2,62 +2,26 @@ import os
 import re
 from pymongo import MongoClient
 
+# Load MongoDB URI from environment and specify DB manually
 client = MongoClient(os.getenv("MONGODB_URI"))
-db = client.get_default_database()
+db = client["angeldb"]  # <-- Replace 'angeldb' with your actual DB name if different
 
-# Collections
-settings_col = db["settings"]
+collection = db["forwarded"]
 replacements_col = db["replacements"]
-forwarded_col = db["forwarded_messages"]
+settings_col = db["settings"]
 
-# ---------------- Target Channels ---------------- #
+# Forward Tracking
+async def is_forwarded_for_target(message_id, target_chat_id):
+    return collection.find_one({"_id": message_id, "targets": target_chat_id}) is not None
 
-async def get_all_target_channels():
-    doc = settings_col.find_one({"_id": "channels"})
-    return doc.get("targets", []) if doc else []
-
-async def add_target_channel(channel_id):
-    settings_col.update_one(
-        {"_id": "channels"},
-        {"$addToSet": {"targets": channel_id}},
+async def mark_as_forwarded_for_target(message_id, target_chat_id):
+    collection.update_one(
+        {"_id": message_id},
+        {"$addToSet": {"targets": target_chat_id}},
         upsert=True
     )
 
-async def remove_target_channel(channel_id):
-    settings_col.update_one(
-        {"_id": "channels"},
-        {"$pull": {"targets": channel_id}}
-    )
-
-# ---------------- Source Channels ---------------- #
-
-async def get_all_source_channels():
-    doc = settings_col.find_one({"_id": "channels"})
-    return doc.get("sources", []) if doc else []
-
-async def add_source_channel(channel_id):
-    settings_col.update_one(
-        {"_id": "channels"},
-        {"$addToSet": {"sources": channel_id}},
-        upsert=True
-    )
-
-async def remove_source_channel(channel_id):
-    settings_col.update_one(
-        {"_id": "channels"},
-        {"$pull": {"sources": channel_id}}
-    )
-
-# ---------------- Message Forward Tracking ---------------- #
-
-async def is_forwarded_for_target(message_id, target_id):
-    return forwarded_col.find_one({"_id": f"{message_id}_{target_id}"}) is not None
-
-async def mark_as_forwarded_for_target(message_id, target_id):
-    forwarded_col.insert_one({"_id": f"{message_id}_{target_id}"})
-
-# ---------------- Regex Replacements ---------------- #
-
+# Caption Replacements
 async def add_replacement(pattern, replacement):
     replacements_col.update_one(
         {"pattern": pattern},
@@ -73,6 +37,29 @@ async def list_replacements():
 
 async def apply_replacements(text):
     replacements = await list_replacements()
-    for r in replacements:
-        text = re.sub(r["pattern"], r["replacement"], text)
+    for item in replacements:
+        try:
+            text = re.sub(item["pattern"], item["replacement"], text)
+        except re.error:
+            continue
     return text
+
+# Source Channels
+async def get_all_source_channels():
+    doc = settings_col.find_one({"_id": "sources"})
+    return doc["channels"] if doc else []
+
+async def add_source_channel(chat_id):
+    settings_col.update_one(
+        {"_id": "sources"},
+        {"$addToSet": {"channels": chat_id}},
+        upsert=True
+    )
+
+async def remove_source_channel(chat_id):
+    settings_col.update_one(
+        {"_id": "sources"},
+        {"$pull": {"channels": chat_id}},
+        upsert=True
+)
+        
