@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from telethon import events
 from angel_db import collection
-from angel_db import settings_col, is_admin, extra_targets_col
+from angel_db import settings_col, extra_targets_col
 
 load_dotenv()
 
