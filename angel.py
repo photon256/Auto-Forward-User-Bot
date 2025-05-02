@@ -1,83 +1,50 @@
 import os
+from dotenv import load_dotenv
 import asyncio
 import threading
-import logging
 from flask import Flask
-from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError
+from settings import setup_extra_handlers, load_initial_settings, is_admin, DEFAULT_ADMINS
+from settings import get_all_target_channels, add_target_channel, remove_target_channel
+from angel_db import is_forwarded_for_target, mark_as_forwarded_for_target
+from angel_db import collection
 
-from settings import (
-    setup_extra_handlers,
-    load_initial_settings,
-    is_admin,
-    get_all_target_channels,
-    add_target_channel,
-    remove_target_channel
-)
-from angel_db import (
-    is_forwarded_for_target,
-    mark_as_forwarded_for_target,
-    collection
-)
-
-# Load environment variables
 load_dotenv()
-
-# Configure logging
-logging.basicConfig(
-    format='[%(levelname)s %(asctime)s] %(name)s: %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# Telegram API credentials
+# ===== WOODcraft ==== SudoR2spr ==== #
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
 STATUS_URL = os.getenv("STATUS_URL")
-SOURCE_CHAT_IDS = [
-    int(chat_id.strip()) for chat_id in os.getenv("SOURCE_CHAT_ID", "").split(",") if chat_id.strip()
-]
-
+SOURCE_CHAT_ID = int(os.getenv("SOURCE_CHAT_ID"))
 PORT = int(os.getenv("PORT", 8080))
+# ===== WOODcraft ==== SudoR2spr ==== #
 
-# Initialize Telegram client
+# ===== WOODcraft ==== SudoR2spr ==== #
 woodcraft = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 woodcraft.delay_seconds = 5
 woodcraft.skip_next_message = False
+app = Flask(__name__)
 forwarding_enabled = True
 
-# Initialize Flask app
-app = Flask(__name__)
-async def get_chat_ids():
-    chat_ids = os.getenv("SOURCE_CHAT_ID", "").split(",")
-    valid_chat_ids = []
-    for chat_id in chat_ids:
-        try:
-            valid_chat_ids.append(int(chat_id.strip()))
-        except ValueError:
-            print(f"Warning: '{chat_id}' is not a valid chat ID and will be skipped.")
-    return valid_chat_ids
-
-SOURCE_CHAT_IDS = get_chat_ids()
-
+# ===== WOODcraft ==== SudoR2spr ==== #
 async def send_without_tag(original_msg):
     try:
         targets = await get_all_target_channels()
         if not targets:
-            logger.warning("No target channels configured.")
+            print("⚠️ There is no target channel!")
             return False
 
         forwarded = False
         for target in targets:
             if await is_forwarded_for_target(original_msg.id, target):
-                logger.info(f"Message {original_msg.id} already forwarded to {target}. Skipping.")
+                print(f"⏩ Skip: {original_msg.id} (Target: {target})")
                 continue
 
-            logger.info(f"Forwarding message {original_msg.id} to {target}.")
-
+            print(f"➡️ Forwarding: {original_msg.id} to {target}")
+            
+            # ===== WOODcraft ==== SudoR2spr ==== মিডিয়া মেসেজ হ্যান্ডলিং === # 
             if original_msg.media:
                 await woodcraft.send_file(
                     entity=target,
@@ -85,6 +52,7 @@ async def send_without_tag(original_msg):
                     caption=original_msg.text,
                     silent=True
                 )
+            # ===== WOODcraft ==== SudoR2spr ==== টেক্সট মেসেজ হ্যান্ডলিং === #
             else:
                 await woodcraft.send_message(
                     entity=target,
@@ -92,35 +60,34 @@ async def send_without_tag(original_msg):
                     formatting_entities=original_msg.entities,
                     silent=True
                 )
-
+            
             await mark_as_forwarded_for_target(original_msg.id, target)
             forwarded = True
             await asyncio.sleep(woodcraft.delay_seconds)
 
         return forwarded
-
     except FloodWaitError as e:
-        logger.warning(f"FloodWaitError: Waiting for {e.seconds} seconds.")
+        print(f"⏳ FloodWait: {e.seconds} সেকেন্ড অপেক্ষা করুন")
         await asyncio.sleep(e.seconds + 5)
         return await send_without_tag(original_msg)
     except Exception as e:
-        logger.error(f"Error in send_without_tag: {str(e)}")
+        print(f"🚨 Error: {str(e)}")
         return False
 
 async def forward_old_messages():
-    logger.info("Starting to forward old messages...")
+    print("⏪ Start forwarding old messages...")
     async for message in woodcraft.iter_messages(SOURCE_CHAT_ID, reverse=True):
         if forwarding_enabled:
             await send_without_tag(message)
             await asyncio.sleep(woodcraft.delay_seconds)
 
-
 async def forward_old_messages_to_new_target(new_target_id):
-    logger.info(f"Forwarding old messages to new target: {new_target_id}")
+    print(f"🔄 Forward to new target: {new_target_id}")
     async for message in woodcraft.iter_messages(SOURCE_CHAT_ID, reverse=True):
         if await is_forwarded_for_target(message.id, new_target_id):
             continue
         try:
+            # ===== WOODcraft ==== SudoR2spr ==== মিডিয়া মেসেজ === #
             if message.media:
                 await woodcraft.send_file(
                     new_target_id,
@@ -128,45 +95,36 @@ async def forward_old_messages_to_new_target(new_target_id):
                     caption=message.text,
                     silent=True
                 )
+            # ===== WOODcraft ==== SudoR2spr ==== টেক্সট মেসেজ === #
             else:
                 await woodcraft.send_message(
                     new_target_id,
-                    message=message.text,
+                    message.text,
                     formatting_entities=message.entities,
                     silent=True
                 )
             await mark_as_forwarded_for_target(message.id, new_target_id)
-            logger.info(f"Message {message.id} forwarded to {new_target_id}")
+            print(f"✅ {message.id} -> {new_target_id}")
             await asyncio.sleep(woodcraft.delay_seconds)
         except FloodWaitError as e:
-            logger.warning(f"FloodWaitError: Waiting for {e.seconds} seconds.")
+            print(f"⏳ FloodWait: {e.seconds}s অপেক্ষা")
             await asyncio.sleep(e.seconds + 5)
         except Exception as e:
-            logger.error(f"Error forwarding message {message.id} to {new_target_id}: {str(e)}")
+            print(f"🚨 Error: {str(e)}")
             break
 
-@woodcraft.on(events.NewMessage(chats=SOURCE_CHAT_IDS))
-async def new_message_handler(event):
-    global forwarding_enabled
-    if forwarding_enabled and not woodcraft.skip_next_message:
-        await asyncio.sleep(woodcraft.delay_seconds)
-        await send_without_tag(event.message)
-    elif woodcraft.skip_next_message:
-        print("⏭️ Message skipped.")
-        woodcraft.skip_next_message = False
-        
 @woodcraft.on(events.NewMessage(pattern=r'^/status$'))
 async def status(event):
     if not is_admin(event.sender_id):
         await event.reply("❌ No permission!")
         return
 
-    status_text = "Active ✅" if forwarding_enabled else "Inactive ❌"
+    status = "Active ✅" if forwarding_enabled else "Inactive ❌"
     total_forwarded_files = collection.count_documents({})
 
     caption = (
         f"◉ Total Forwarded Files: `{total_forwarded_files}`\n"
-        f"◉ Status: {status_text}\n"
+        f"◉ Status: {status}\n"
         f"◉ Delay: {woodcraft.delay_seconds}s\n"
         f"◉ Skip: {woodcraft.skip_next_message}\n\n"
         f"❖ 𝐖𝐎𝐎𝐃𝐜𝐫𝐚𝐟𝐭 ❖"
@@ -201,7 +159,7 @@ async def addtarget_handler(event):
         return
     chat_id = int(event.pattern_match.group(1))
     await add_target_channel(chat_id)
-    await event.reply(f"✅ Added target: `{chat_id}`")
+    await event.reply(f"✅ Add target: `{chat_id}`")
     await forward_old_messages_to_new_target(chat_id)
 
 @woodcraft.on(events.NewMessage(pattern=r'^/removetarget\s+(-?\d+)$'))
@@ -210,15 +168,12 @@ async def removetarget_handler(event):
         return
     chat_id = int(event.pattern_match.group(1))
     await remove_target_channel(chat_id)
-    await event.reply(f"❌ Removed target: `{chat_id}`")
+    await event.reply(f"❌ Target Remove: `{chat_id}`")
 
 @woodcraft.on(events.NewMessage(pattern=r'^/listtargets$'))
 async def list_targets_handler(event):
     targets = await get_all_target_channels()
-    if targets:
-        msg = "**🎯 Target channels:**\n" + "\n".join(f"`{tid}`" for tid in targets)
-    else:
-        msg = "No target channels configured."
+    msg = "**🎯 Target channel:**\n" + "\n".join(f"`{tid}`" for tid in targets) if targets else "No target!"
     await event.reply(msg)
 
 @woodcraft.on(events.NewMessage(pattern=r'^/count$'))
@@ -226,24 +181,34 @@ async def count_handler(event):
     total = collection.count_documents({})
     await event.reply(f"📊 Total Forwarded Files: `{total}`")
 
+@woodcraft.on(events.NewMessage(chats=SOURCE_CHAT_ID))
+async def new_message_handler(event):
+    global forwarding_enabled
+    if forwarding_enabled and not woodcraft.skip_next_message:
+        await asyncio.sleep(woodcraft.delay_seconds)
+        await send_without_tag(event.message)
+    elif woodcraft.skip_next_message:
+        print("⏭️ Message skipped.")
+        woodcraft.skip_next_message = False
 
 @app.route("/")
 def home():
-    return "🤖 Angel bot is active!", 200
+    return "🤖 Activate the Angel bot!", 200
 
 async def main():
     await woodcraft.start()
-    logger.info("Bot started successfully.")
+    print("✅ Successfully Launch the bot!")
     await load_initial_settings(woodcraft)
     setup_extra_handlers(woodcraft)
-
+    
     targets = await get_all_target_channels()
     if not targets:
-        logger.warning("No target channels configured. Use /addtarget to add.")
-
+        print("⚠️ /addtarget Use")
+    
     asyncio.create_task(forward_old_messages())
     await woodcraft.run_until_disconnected()
 
 if __name__ == "__main__":
     threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": PORT}).start()
     asyncio.run(main())
+                
