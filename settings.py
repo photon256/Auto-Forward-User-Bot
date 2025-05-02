@@ -2,12 +2,11 @@ import os
 import sys
 import asyncio
 import aiohttp
-import re
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from telethon import events
 from angel_db import collection
-from angel_db import settings_col, extra_targets_col
+from angel_db import settings_col, admin_col, extra_targets_col
 
 load_dotenv()
 
@@ -17,10 +16,6 @@ NOOR_URL = os.getenv("NOOR_URL")
 DEFAULT_ADMINS = [int(x) for x in os.getenv("DEFAULT_ADMINS", "").split(",") if x.strip()]
 
 # ================== Functions ====================
-async def get_source_chat_ids():
-    ids = os.getenv("SOURCE_CHAT_IDS", "")
-    return [int(x.strip()) for x in ids.split(",") if x.strip()]
-
 async def add_target_channel(chat_id):
     if not extra_targets_col.find_one({"chat_id": chat_id}):
         extra_targets_col.insert_one({"chat_id": chat_id})
@@ -56,36 +51,8 @@ def remove_admin(user_id):
     except Exception as e:
         print(f"Remove admin error: {e}")
 
-# ================= Word Replacement Functions =================
-async def set_caption_replacement(event, new_word, replacement_word):
-    """ Set a word replacement for captions """
-    if not is_admin(event.sender_id):
-        return await event.reply("❌ You are not an admin.")
-    
-    # Add the replacement to the database
-    settings_col.update_one(
-        {"key": "caption_replacements"},
-        {"$push": {"value": {"pattern": new_word, "replacement": replacement_word}}},
-        upsert=True
-    )
-    await event.reply(f"✅ Set replacement for `{new_word}` to `{replacement_word}`.")
-
-def get_caption_replacements():
-    """ Fetch all word replacements from the database """
-    replacement_data = settings_col.find_one({"key": "caption_replacements"})
-    return replacement_data["value"] if replacement_data else []
-
-async def apply_caption_replacements(caption_text):
-    """ Apply all replacements to the given caption text """
-    replacements = await get_caption_replacements()
-    for repl in replacements:
-        pattern = repl["pattern"]
-        replacement = repl["replacement"]
-        caption_text = re.sub(pattern, replacement, caption_text)
-    return caption_text
-
-# ================= Event Handlers =================
-async def setup_extra_handlers(woodcraft):
+# ============== Event Handlers ================
+def setup_extra_handlers(woodcraft):
     @woodcraft.on(events.NewMessage(pattern=r'^/setdelay (\d+)$'))
     async def set_delay(event):
         if not is_admin(event.sender_id):
@@ -123,15 +90,6 @@ async def setup_extra_handlers(woodcraft):
         woodcraft.skip_next_message = False
         await event.reply("▶️ Forwarding is on")
 
-    @woodcraft.on(events.NewMessage(pattern=r'^/setreplace (.+) to (.+)$'))
-    async def handle_caption_replace(event):
-        if not is_admin(event.sender_id):
-            return await event.reply("❌ You are not an admin.")
-        
-        old_word = event.pattern_match.group(1)
-        new_word = event.pattern_match.group(2)
-        await set_caption_replacement(event, old_word, new_word)
-
     @woodcraft.on(events.NewMessage(pattern=r'^/woodcraft$'))
     async def woodcraft_handler(event):
         if not is_admin(event.sender_id):
@@ -139,61 +97,61 @@ async def setup_extra_handlers(woodcraft):
             return
 
         caption = """
-        **🔧 All commands list 🌟**
+**🔧 All commands list 🌟**
 
-        ```👉 Click to copy command```
+```👉 Click to copy command```
 
-        /status `/status`
-        ```⚡ View bot status```
+/status `/status`  
+```⚡ View bot status```
 
-        /setdelay [Sec] `/setdelay`
-        ```⏱️ Set the delay time.```
+/setdelay [Sec] `/setdelay`
+```⏱️ Set the delay time.```
 
-        /skip `/skip`
-        ```🛹 Skip to next message```
+/skip `/skip`  
+```🛹 Skip to next message```
 
-        /resume `/resume`
-        ```🏹 Start forwarding```
+/resume `/resume`  
+```🏹 Start forwarding```
 
-        /on `/on`
-        ```✅ Launch the bot```
+/on `/on` 
+```✅ Launch the bot```
 
-        /off `/off`
-        ```📴 Close the bot```
+/off `/off` 
+```📴 Close the bot```
 
-        /addtarget [ID] `/addtarget`
-        ```✅ Add target```
+/addtarget [ID] `/addtarget`  
+```✅ Add target```
 
-        /removetarget [ID] `/removetarget`
-        ```😡 Remove target```
+/removetarget [ID] `/removetarget` 
+```😡 Remove target```
 
-        /listtargets `/listtargets`
-        ```🆔 View Target ID```
+/listtargets `/listtargets` 
+```🆔 View Target ID```
 
-        ```✅ How to Use:
-        Reply to a user’s message and send the command:   
-        /addadmin```
+```✅ How to Use:  
+Reply to a user’s message and send the command:  
+/addadmin```
 
-        /addadmin `/addadmin`
-        ```➕ Promote a user to admin (non-permanent).```
+/addadmin `/addadmin` 
+```➕ Promote a user to admin (non-permanent).```
 
-        /removeadmin `/removeadmin`
-        ```➖ Remove a user from admin who was added using /addadmin.```
+/removeadmin `/removeadmin`
+```➖ Remove a user from admin who was added using /addadmin.```
 
-        /listadmins `/listadmins`
-        ```📋 View the list of all current admins (both from .env and database).```
+ /listadmins `/listadmins`
+ ```📋 View the list of all current admins (both from .env and database).```
 
-        /noor `/noor`
-        ```👀 Shows a detailed status report including:```
+/noor `/noor`
+```👀 Shows a detailed status report including:```
 
-        /count `/count`
-        ```📊 Total Forwarded Files```
+/count `/count`
+```📊 Total Forwarded Files```
 
-        /restart `/restart`
-        ```♻️ Restarts the bot safely.```
+/restart `/restart`
+```♻️ Restarts the bot safely.```
 
-        🖤⃝💔 𝐖𝐎𝐎𝐃𝐂𝐫𝐚𝐟𝐭 🖤⃝💔
-        """
+🖤⃝💔 𝐖𝐎𝐎𝐃𝐜𝐫𝐚𝐟𝐭 🖤⃝💔
+"""
 
         await woodcraft.send_file(
             event.chat_id,
@@ -201,6 +159,42 @@ async def setup_extra_handlers(woodcraft):
             caption=caption,
             parse_mode='md'
         )
+
+    @woodcraft.on(events.NewMessage(pattern=r'^/addadmin$'))
+    async def handle_add_admin(event):
+        if not is_admin(event.sender_id):
+            return await event.reply("❌ You are not an admin.")
+        if not event.is_reply:
+            return await event.reply("Reply to the user you want to make admin.")
+        target_msg = await event.get_reply_message()
+        if target_msg:
+            add_admin(target_msg.sender_id)
+            await event.reply(f"✅ User `{target_msg.sender_id}` added as admin.")
+
+    @woodcraft.on(events.NewMessage(pattern=r'^/removeadmin$'))
+    async def handle_remove_admin(event):
+        if not is_admin(event.sender_id):
+            return await event.reply("❌ You are not an admin.")
+        if not event.is_reply:
+            return await event.reply("Reply to the admin you want to remove.")
+        target_msg = await event.get_reply_message()
+        if target_msg:
+            remove_admin(target_msg.sender_id)
+            await event.reply(f"❌ User `{target_msg.sender_id}` removed from admins.")
+
+    @woodcraft.on(events.NewMessage(pattern=r'^/listadmins$'))
+    async def list_admins(event):
+        if not is_admin(event.sender_id):
+            return await event.reply("❌ You are not an admin.")
+        env_admins = [str(uid) for uid in DEFAULT_ADMINS]
+        db_admins_cursor = admin_col.find({}, {"_id": 0, "user_id": 1})
+        db_admins = [str(doc["user_id"]) for doc in db_admins_cursor]
+        total_admins = env_admins + [uid for uid in db_admins if uid not in env_admins]
+        if total_admins:
+            admin_list = "\n".join([f"`{uid}`" for uid in total_admins])
+            await event.reply(f"**👮 Admin List:**\n\n{admin_list}", parse_mode='md')
+        else:
+            await event.reply("No admins found.")
 
     @woodcraft.on(events.NewMessage(pattern=r'^/restart$'))
     async def restart_bot(event):
@@ -210,6 +204,45 @@ async def setup_extra_handlers(woodcraft):
         await asyncio.sleep(2)
         sys.exit(0)
 
+    @woodcraft.on(events.NewMessage(pattern=r'^/noor$'))
+    async def noor_handler(event):
+        if not is_admin(event.sender_id):
+            await event.reply("❌ You are not an admin.")
+            return
+
+        admins = [str(doc["user_id"]) for doc in admin_col.find()]
+        targets = [str(doc["chat_id"]) for doc in extra_targets_col.find()]
+
+        delay_data = settings_col.find_one({"key": "delay"})
+        delay = delay_data["value"] if delay_data else 5
+
+        skip_data = settings_col.find_one({"key": "skip_next"})
+        skip_next = skip_data["value"] if skip_data else False
+
+        current_time = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+
+        message = (
+            "📦 **Bot status**\n\n"
+            f"👑 **Admin ({len(admins)}):**\n`{', '.join(admins)}`\n\n"
+            f"🎯 **Target Channel ({len(targets)}):**\n`{', '.join(targets)}`\n\n"
+            f"⏱️ **Delay:** `{delay} Sec`\n"
+            f"⏭️ **Skip to next message:** `{skip_next}`\n\n"
+            f"🕒 **Last backup:** `{current_time}`\n\n"
+            f"⫷〇❖◉◉◉ 𝐖𝐎𝐎𝐃𝐜𝐫𝐚𝐟𝐭 ◉◉◉❖〇⫸"
+        )
+
+        try:
+            await woodcraft.send_file(
+                entity=event.chat_id,
+                file=NOOR_URL,
+                caption=message,
+                parse_mode='md',
+                force_document=False
+            )
+        except Exception as e:
+            await event.reply(f"Error: {e}")
+
+
 # ============ Initial Settings Loader ============
 async def load_initial_settings(woodcraft):
     delay = settings_col.find_one({"key": "delay"})
@@ -217,4 +250,4 @@ async def load_initial_settings(woodcraft):
 
     skip_next = settings_col.find_one({"key": "skip_next"})
     woodcraft.skip_next_message = skip_next["value"] if skip_next else False
-    
+        
