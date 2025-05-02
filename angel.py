@@ -226,15 +226,6 @@ async def count_handler(event):
     total = collection.count_documents({})
     await event.reply(f"📊 Total Forwarded Files: `{total}`")
 
-@woodcraft.on(events.NewMessage(chats=SOURCE_CHAT_ID))
-async def new_message_handler(event):
-    global forwarding_enabled
-    if forwarding_enabled and not woodcraft.skip_next_message:
-        await asyncio.sleep(woodcraft.delay_seconds)
-        await send_without_tag(event.message)
-    elif woodcraft.skip_next_message:
-        logger.info("Message skipped.")
-        woodcraft.skip_next_message = False
 
 @app.route("/")
 def home():
